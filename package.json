@@ -1,6 +1,6 @@
 {
   "name": "openfedx",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "an open source sdk for the fedex api written in typescript",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

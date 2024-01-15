@@ -1,4 +1,7 @@
 import { Auth, grantType, token } from "./auth/auth";
+import { Rates } from "./rates/rates";
+
+export type TaskFunction<T = any> = (x: any) => Promise<T>;
 
 export class Fedex {
   private authorization: Auth;
@@ -21,6 +24,8 @@ export class Fedex {
   private childSecret: string | undefined;
   private env: "sandBox" | "production";
   private token: token | undefined;
+  public asyncQueue: TaskFunction[];
+  private errorLog;
 
   constructor({
     grantType,
@@ -30,6 +35,7 @@ export class Fedex {
     storedToken,
     childKey,
     childSecret,
+    errorLog,
   }: {
     grantType: grantType;
     clientId: string;
@@ -38,6 +44,7 @@ export class Fedex {
     childSecret?: string | undefined;
     env: "sandBox" | "production";
     storedToken?: token;
+    errorLog?: () => void;
   }) {
     this.grantType = grantType;
     this.clientId = clientId;
@@ -47,6 +54,8 @@ export class Fedex {
     this.childSecret = childSecret;
     this.env = env;
     this.token = storedToken;
+    this.asyncQueue = [];
+    this.errorLog = errorLog;
 
     this.authorization = new Auth({
       clientId: this.clientId,
@@ -58,19 +67,72 @@ export class Fedex {
     });
   }
 
-  authenticate = async () => {
-    if (
-      this.token &&
-      Number.parseInt(this.token.createdAt.toString()) + this.token.expires <
-        Number.parseInt(Date.now().toString())
-    ) {
-      return this.token;
+  addTaskToQueue = (task: TaskFunction) => {
+    this.asyncQueue.push(task);
+  };
+
+  run = async () => {
+    let previousResult: any = null;
+    let getLastTaskResult = () => previousResult;
+
+    for await (const task of this.asyncQueue) {
+      try {
+        const result = await task(previousResult);
+        previousResult = result;
+      } catch (error) {
+        console.error("Error executing task:", error);
+        return;
+      }
     }
-    let token = await this.authorization.authenticate();
-    if (!token) {
-      console.error("Failed, to authenticate see previous error messages");
-    }
-    this.token = token;
+    this.asyncQueue = [];
+    return previousResult;
+  };
+
+  consume = async () => {
+    await this.run();
+    return this;
+  }
+
+  authenticate = () => {
+    this.asyncQueue.push(() => {
+      return new Promise<Fedex>((resolve, reject) => {
+        if (
+          this.token &&
+          Number.parseInt(this.token.createdAt.toString()) +
+            this.token.expires <
+            Number.parseInt(Date.now().toString())
+        ) {
+          return Promise.resolve();
+        }
+        let token: token | undefined;
+        this.authorization
+          .authenticate()
+          .then((x) => {
+            token = x;
+          })
+          .then(() => {
+            if (!token) {
+              console.error(
+                "Failed, to authenticate see previous error messages",
+              );
+            }
+          })
+          .then(() => {
+            this.token = token;
+            resolve(this);
+          });
+      });
+    });
+    return this;
+  };
+
+  consumeToken = async () => {
+    await this.run();
     return this.token;
   };
+
+  rates = () => {
+    return new Rates({env: this.env, asyncQueue: this.asyncQueue, token: this.token!});
+  }
+   
 }
