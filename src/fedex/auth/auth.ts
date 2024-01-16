@@ -49,12 +49,16 @@ export class Auth {
     try {
       let resp = await this.sendForm(mutForm);
       let data = (await resp.json()) as successfulResponse;
-      data = {
-        ...data,
-        createAt: Date.now(),
-      } as unknown as token;
+      let token: token = {
+        createdAt: Date.now(),
+        accessToken: data.access_token,
+        scope: data.scope,
+        expires: data.expires_in,
+        tokenType: data.token_type,
+      }
+      
 
-      return data as token;
+      return token;
     } catch (e) {
       console.error(e);
       return undefined;
@@ -144,6 +148,16 @@ export class Auth {
   };
 }
 
+type responseToken = {
+  token: {
+    access_token: string;
+    token_type: string;
+    expires_in: number;
+    scope: string;
+    createdAt: Date;
+  }
+}
+
 export type grantType =
   | "client_credentials"
   | "csp_credentials"
@@ -178,9 +192,9 @@ type clientForm = {
 };
 
 type successfulResponse = {
-  accessToken: string;
-  tokenType: string;
-  expires: number;
+  access_token: string;
+  token_type: string;
+  expires_in: number;
   scope: string;
 };
 

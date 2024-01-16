@@ -1,3 +1,4 @@
+import { debug } from "console";
 import { Auth, grantType, token } from "./auth/auth";
 import { Rates } from "./rates/rates";
 
@@ -26,6 +27,7 @@ export class Fedex {
   private token: token | undefined;
   public asyncQueue: TaskFunction[];
   private errorLog;
+  private debug;
 
   constructor({
     grantType,
@@ -36,6 +38,7 @@ export class Fedex {
     childKey,
     childSecret,
     errorLog,
+    debug,
   }: {
     grantType: grantType;
     clientId: string;
@@ -45,6 +48,7 @@ export class Fedex {
     env: "sandBox" | "production";
     storedToken?: token;
     errorLog?: () => void;
+    debug?: boolean;
   }) {
     this.grantType = grantType;
     this.clientId = clientId;
@@ -56,6 +60,7 @@ export class Fedex {
     this.token = storedToken;
     this.asyncQueue = [];
     this.errorLog = errorLog;
+    this.debug = debug;
 
     this.authorization = new Auth({
       clientId: this.clientId,
@@ -74,10 +79,14 @@ export class Fedex {
   run = async () => {
     let previousResult: any = null;
     let getLastTaskResult = () => previousResult;
-
+    let steps: number = 0;
     for await (const task of this.asyncQueue) {
       try {
         const result = await task(previousResult);
+        if (this.debug) {
+          console.log("Number of steps:", steps);
+          console.log(result);
+        }
         previousResult = result;
       } catch (error) {
         console.error("Error executing task:", error);
@@ -91,48 +100,36 @@ export class Fedex {
   consume = async () => {
     await this.run();
     return this;
-  }
-
-  authenticate = () => {
-    this.asyncQueue.push(() => {
-      return new Promise<Fedex>((resolve, reject) => {
-        if (
-          this.token &&
-          Number.parseInt(this.token.createdAt.toString()) +
-            this.token.expires <
-            Number.parseInt(Date.now().toString())
-        ) {
-          return Promise.resolve();
-        }
-        let token: token | undefined;
-        this.authorization
-          .authenticate()
-          .then((x) => {
-            token = x;
-          })
-          .then(() => {
-            if (!token) {
-              console.error(
-                "Failed, to authenticate see previous error messages",
-              );
-            }
-          })
-          .then(() => {
-            this.token = token;
-            resolve(this);
-          });
-      });
-    });
-    return this;
   };
 
-  consumeToken = async () => {
-    await this.run();
-    return this.token;
+  authenticate = async () => {
+    if (
+      this.token &&
+      Number.parseInt(this.token.createdAt.toString()) + this.token.expires <
+        Number.parseInt(Date.now().toString())
+    ) {
+      return Promise.resolve();
+    }
+    let token: token | undefined;
+    try {
+      token = await this.authorization.authenticate();
+      this.token = token;
+      return token;
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    }
   };
 
   rates = () => {
-    return new Rates({env: this.env, asyncQueue: this.asyncQueue, token: this.token!});
-  }
-   
+    if(!this.token) {
+      console.error("failed to load token");
+      return;
+    }
+    return new Rates({
+      env: this.env,
+      token: this.token,
+      debug: this.debug,
+    });
+  };
 }

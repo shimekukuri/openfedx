@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { token } from "../auth/auth";
 import { TaskFunction } from "../fedex";
 import { CurrencyCode } from "../resources/currencyCodes/currencyCodes";
@@ -12,7 +13,7 @@ import { CountryCode } from "../resources/countryCodes/countryCodes";
 
 export class Rates {
   private servers = {
-    sandbox: "https://apis-sandbox.fedex.com",
+    sandBox: "https://apis-sandbox.fedex.com",
     production: "https://apis.fedex.com",
   };
   private paths = {
@@ -21,69 +22,617 @@ export class Rates {
   private xLocale: LocaleCodes | undefined;
   private env: "sandBox" | "production";
   private token: token;
-  public asyncQueue: TaskFunction[];
+  private body: FedExRateAPI | undefined;
+  private debug: boolean | undefined;
 
   constructor({
     env,
-    asyncQueue,
     token,
+    debug,
   }: {
     env: "sandBox" | "production";
-    asyncQueue: TaskFunction[];
     token: token;
+    debug?: boolean | undefined;
   }) {
     this.env = env;
-    this.asyncQueue = asyncQueue;
     this.token = token;
+    this.debug = debug;
   }
 
-  generateTestRequest = () => {
-    let body: RateRequestBody = {
-      accountNumber: {
-        value: '23456'
+  sendRequest = async () => {
+    if (!this.body) {
+      console.error("failed to supply request body");
+    }
+
+    if (!this.token) {
+      console.error("Failed to supply accessToken");
+    }
+
+    console.log("SUPPLIED TOKEN", this.token.accessToken);
+
+    if (this.debug) {
+      console.log("SEND_REQUEST DEBUG\n", "BODY:", this.body);
+    }
+    let request: RateRequest = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token.accessToken}`,
       },
-      requestedShipment: {
-        shipper: {
-          address: {
-            city: "meep",
-            postalCode: "48060",
-            countryCode: "LB",
-            residential: undefined,
-            stateOrProvidence: undefined,
-          },
-        },
-        recipient: {
-          address: {
-            stateOrProvidence: undefined,
-            residential: undefined,
-            countryCode: "AL",
-            postalCode: "48060",
-            city: "yolo",
-          },
-        },
-        pickupType: "USE_SCHEDULED_PICKUP",
-        totalWeight: 2,
-        packagingType: "FEDEX_10KG_BOX",
-        totalPackageCount: 2,
-        requestedPackageLineItems: [
-          {
-            weight: { units: "LB", value: 2 },
-            variableHandlingChargeDetail: undefined,
-            dimensions: undefined,
-            contentRecord: undefined,
-            declaredValue: undefined,
-            subPackagingType: undefined,
-            groupPackageCount: undefined,
-            packageSpecialServices: undefined,
-          },
-        ],
-      
-      },
+      credentials: "include",
+      body: this.body!,
     };
+    if (this.debug) {
+      console.log("SEND_REQUEST FULL REQUEST\n", request);
+    }
+    let resp = await fetch(`${this.servers[this.env]}${this.paths.rates}}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token.accessToken}`,
+      },
+      credentials: "include",
+      body: JSON.stringify(this.body),
+    });
+    let data = await resp.json();
+
+    return data;
+  };
+
+  sendTestRequest = async () => {
+    if (!this.body) {
+      console.error("failed to supply request body");
+    }
+
+    if (!this.token) {
+      console.error("Failed to supply accessToken");
+    }
+
+    console.log("SUPPLIED TOKEN", this.token.accessToken);
+
+    if (this.debug) {
+      console.log("SEND_REQUEST DEBUG\n", "BODY:", this.body);
+    }
+    let request: RateRequest = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token.accessToken}`,
+      },
+      credentials: "include",
+      body: this.body!,
+    };
+    if (this.debug) {
+      console.log("SEND_REQUEST FULL REQUEST\n", request);
+    }
+    let resp = await fetch(`${this.servers[this.env]}${this.paths.rates}}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token.accessToken}`,
+        "X-locale": "en_US",
+      },
+      credentials: "include",
+      body: JSON.stringify(this.body),
+    });
+    let data = await resp.json();
+
+    return data;
+  };
+
+  generateTestRequest = () => {
+    let body: FedExRateAPI = {
+  "accountNumber": {
+    "value": "XXXXX7364"
+  },
+  "requestedShipment": {
+    "shipper": {
+      "address": {
+        "postalCode": 65247,
+        "countryCode": "US"
+      }
+    },
+    "recipient": {
+      "address": {
+        "postalCode": 75063,
+        "countryCode": "US"
+      }
+    },
+    "pickupType": "DROPOFF_AT_FEDEX_LOCATION",
+    "rateRequestType": [
+      "ACCOUNT",
+      "LIST"
+    ],
+    "requestedPackageLineItems": [
+      {
+        "weight": {
+          "units": "LB",
+          "value": 10
+        }
+      }
+    ]
+  }
+};
+    this.body = body;
+    if (this.debug) {
+      console.log(body);
+    }
+    return this;
   };
 }
 
-export type RateRequestBody = {
+type RateRequest = {
+  method: "POST";
+  credentials: "include";
+  headers: {
+    "Content-Type": "application/json";
+    Authorization: string;
+  };
+  body: FedExRateAPI;
+};
+
+export interface FedExRateAPI {
+  accountNumber: FedExRateAPIAccountNumber;
+  rateRequestControlParameters: RateRequestControlParameters;
+  requestedShipment: RequestedShipment;
+  carrierCodes: string[];
+}
+
+export interface FedExRateAPIAccountNumber {
+  value: string;
+}
+
+export interface RateRequestControlParameters {
+  returnTransitTimes: boolean;
+  servicesNeededOnRateFailure: boolean;
+  variableOptions: string;
+  rateSortOrder: string;
+}
+
+export interface RequestedShipment {
+  shipper: ShipperClass;
+  recipient: ShipperClass;
+  serviceType: string;
+  emailNotificationDetail: EmailNotificationDetail;
+  preferredCurrency: string;
+  rateRequestType: string[];
+  shipDateStamp: string;
+  pickupType: string;
+  requestedPackageLineItems: RequestedPackageLineItem[];
+  documentShipment: boolean;
+  variableHandlingChargeDetail: VariableHandlingChargeDetail;
+  packagingType: string;
+  totalPackageCount: number;
+  totalWeight: number;
+  shipmentSpecialServices: ShipmentSpecialServices;
+  customsClearanceDetail: CustomsClearanceDetail;
+  groupShipment: boolean;
+  serviceTypeDetail: ServiceTypeDetail;
+  smartPostInfoDetail: SmartPostInfoDetail;
+  expressFreightDetail: ExpressFreightDetail;
+  groundShipment: boolean;
+}
+
+export interface CustomsClearanceDetail {
+  brokers: Broker[];
+  commercialInvoice: CommercialInvoice;
+  freightOnValue: string;
+  dutiesPayment: DutiesPayment;
+  commodities: Commodity[];
+}
+
+export interface Broker {
+  broker: BrokerClass;
+  type: string;
+  brokerCommitTimestamp: string;
+  brokerCommitDayOfWeek: string;
+  brokerLocationId: string;
+  brokerAddress: BrokerAddressClass;
+  brokerToDestinationDays: number;
+}
+
+export interface BrokerClass {
+  accountNumber: RecipientAccountNumber;
+  address: BrokerAddress | null;
+  contact: RecipientContact | null;
+}
+
+export interface RecipientAccountNumber {
+  value: number;
+}
+
+export interface BrokerAddress {
+  streetLines: string[];
+  countryCode: string;
+}
+
+export interface RecipientContact {
+  companyName: string;
+  faxNumber: string;
+  personName: string;
+  phoneNumber: string;
+}
+
+export interface BrokerAddressClass {
+  streetLines: StreetLine[];
+  city: string;
+  stateOrProvinceCode: string;
+  postalCode: string;
+  countryCode: string;
+  residential: boolean;
+  classification: string;
+  geographicCoordinates: string;
+  urbanizationCode: string;
+  countryName: string;
+}
+
+export type StreetLine = "10 FedEx Parkway" | "Suite 302" | "1550 Union Blvd";
+
+export interface CommercialInvoice {
+  shipmentPurpose: string;
+}
+
+export interface Commodity {
+  description: string;
+  weight: Weight;
+  quantity: number;
+  customsValue: FixedValue;
+  unitPrice: FixedValue;
+  numberOfPieces: number;
+  countryOfManufacture: string;
+  quantityUnits: string;
+  name: string;
+  harmonizedCode: string;
+  partNumber: string;
+}
+
+export interface FixedValue {
+  amount: string;
+  currency: string;
+}
+
+export interface Weight {
+  units: string;
+  value: number;
+}
+
+export interface DutiesPayment {
+  payor: Payor;
+  paymentType: string;
+}
+
+export interface Payor {
+  responsibleParty: ResponsibleParty;
+}
+
+export interface ResponsibleParty {
+  address: ResponsiblePartyAddress;
+  contact: ResponsiblePartyContact;
+  accountNumber: FedExRateAPIAccountNumber;
+}
+
+export interface ResponsiblePartyAddress {
+  streetLines: StreetLine[];
+  city: string;
+  stateOrProvinceCode: string;
+  postalCode: string;
+  countryCode: string;
+  residential: boolean;
+}
+
+export interface ResponsiblePartyContact {
+  personName: string;
+  emailAddress: string;
+  phoneNumber: string;
+  phoneExtension: string;
+  companyName: string;
+  faxNumber: string;
+}
+
+export interface EmailNotificationDetail {
+  recipients: EmailNotificationDetailRecipient[];
+  personalMessage: string;
+  PrintedReference: PrintedReference;
+}
+
+export interface PrintedReference {
+  printedReferenceType: string;
+  value: string;
+}
+
+export interface EmailNotificationDetailRecipient {
+  emailAddress: string;
+  notificationEventType: string[];
+  smsDetail: SMSDetail;
+  notificationFormatType: string;
+  emailNotificationRecipientType: string;
+  notificationType: string;
+  locale: string;
+}
+
+export interface SMSDetail {
+  phoneNumber: string;
+  phoneNumberCountryCode: string;
+}
+
+export interface ExpressFreightDetail {
+  bookingConfirmationNumber: string;
+  shippersLoadAndCount: number;
+}
+
+export interface ShipperClass {
+  address: ResponsiblePartyAddress;
+}
+
+export interface RequestedPackageLineItem {
+  subPackagingType: string;
+  groupPackageCount: number;
+  contentRecord: ContentRecord[];
+  declaredValue: FixedValue;
+  weight: Weight;
+  dimensions: Dimensions;
+  variableHandlingChargeDetail: VariableHandlingChargeDetail;
+  packageSpecialServices: PackageSpecialServices;
+}
+
+export interface ContentRecord {
+  itemNumber: string;
+  receivedQuantity: number;
+  description: string;
+  partNumber: string;
+}
+
+export interface Dimensions {
+  length: number;
+  width: number;
+  height: number;
+  units: string;
+}
+
+export interface PackageSpecialServices {
+  specialServiceTypes: string[];
+  signatureOptionType: string[];
+  alcoholDetail: AlcoholDetail;
+  dangerousGoodsDetail: DangerousGoodsDetail;
+  packageCODDetail: PackageCODDetail;
+  pieceCountVerificationBoxCount: number;
+  batteryDetails: BatteryDetail[];
+  dryIceWeight: Weight;
+}
+
+export interface AlcoholDetail {
+  alcoholRecipientType: string;
+  shipperAgreementType: string;
+}
+
+export interface BatteryDetail {
+  material: string;
+  regulatorySubType: string;
+  packing: string;
+}
+
+export interface DangerousGoodsDetail {
+  offeror: string;
+  accessibility: string;
+  emergencyContactNumber: string;
+  options: string[];
+  containers: Container[];
+  packaging: Packaging;
+}
+
+export interface Container {
+  offeror: string;
+  hazardousCommodities: HazardousCommodity[];
+  numberOfContainers: number;
+  containerType: string;
+  emergencyContactNumber: Number;
+  packaging: Packaging;
+  packingType: string;
+  radioactiveContainerClass: string;
+}
+
+export interface Number {
+  areaCode: string;
+  extension: string;
+  countryCode: string;
+  personalIdentificationNumber: string;
+  localNumber: string;
+}
+
+export interface HazardousCommodity {
+  quantity: Quantity;
+  innerReceptacles: InnerReceptacle[];
+  options: Options;
+  description: Description;
+}
+
+export interface Description {
+  sequenceNumber: number;
+  processingOptions: string[];
+  subsidiaryClasses: string;
+  labelText: string;
+  technicalName: string;
+  packingDetails: PackingDetails;
+  authorization: string;
+  reportableQuantity: boolean;
+  percentage: number;
+  id: string;
+  packingGroup: string;
+  properShippingName: string;
+  hazardClass: string;
+}
+
+export interface PackingDetails {
+  packingInstructions: string;
+  cargoAircraftOnly: boolean;
+}
+
+export interface InnerReceptacle {
+  quantity: Quantity;
+}
+
+export interface Quantity {
+  quantityType: string;
+  amount: number;
+  units: string;
+}
+
+export interface Options {
+  labelTextOption: string;
+  customerSuppliedLabelText: string;
+}
+
+export interface Packaging {
+  count: number;
+  units: string;
+}
+
+export interface PackageCODDetail {
+  codCollectionAmount: CodCollectionAmount;
+  codCollectionType: string;
+}
+
+export interface CodCollectionAmount {
+  amount: number;
+  currency: string;
+}
+
+export interface VariableHandlingChargeDetail {
+  rateType: string;
+  percentValue: number;
+  rateLevelType: string;
+  fixedValue: FixedValue;
+  rateElementBasis: string;
+}
+
+export interface ServiceTypeDetail {
+  carrierCode: string;
+  description: string;
+  serviceName: string;
+  serviceCategory: string;
+}
+
+export interface ShipmentSpecialServices {
+  returnShipmentDetail: ReturnShipmentDetail;
+  deliveryOnInvoiceAcceptanceDetail: DeliveryOnInvoiceAcceptanceDetail;
+  internationalTrafficInArmsRegulationsDetail: InternationalTrafficInArmsRegulationsDetail;
+  pendingShipmentDetail: PendingShipmentDetail;
+  holdAtLocationDetail: HoldAtLocationDetail;
+  shipmentCODDetail: ShipmentCODDetail;
+  shipmentDryIceDetail: ShipmentDryIceDetail;
+  internationalControlledExportDetail: InternationalControlledExportDetail;
+  homeDeliveryPremiumDetail: HomeDeliveryPremiumDetail;
+  specialServiceTypes: string[];
+}
+
+export interface DeliveryOnInvoiceAcceptanceDetail {
+  recipient: BrokerClass;
+}
+
+export interface HoldAtLocationDetail {
+  locationId: string;
+  locationContactAndAddress: TionContactAndAddress;
+  locationType: string;
+}
+
+export interface TionContactAndAddress {
+  address: ResponsiblePartyAddress;
+  contact: ResponsiblePartyContact;
+}
+
+export interface HomeDeliveryPremiumDetail {
+  phoneNumber: Number;
+  shipTimestamp: string;
+  homedeliveryPremiumType: string;
+}
+
+export interface InternationalControlledExportDetail {
+  type: string;
+}
+
+export interface InternationalTrafficInArmsRegulationsDetail {
+  licenseOrExemptionNumber: string;
+}
+
+export interface PendingShipmentDetail {
+  pendingShipmentType: string;
+  processingOptions: ProcessingOptions;
+  recommendedDocumentSpecification: RecommendedDocumentSpecification;
+  emailLabelDetail: EmailLabelDetail;
+  documentReferences: DocumentReference[];
+  expirationTimeStamp: string;
+  shipmentDryIceDetail: ShipmentDryIceDetail;
+}
+
+export interface DocumentReference {
+  documentType: string;
+  customerReference: string;
+  description: string;
+  documentId: string;
+}
+
+export interface EmailLabelDetail {
+  recipients: EmailLabelDetailRecipient[];
+  message: string;
+}
+
+export interface EmailLabelDetailRecipient {
+  emailAddress: string;
+  optionsRequested: ProcessingOptions;
+  role: string;
+  locale: Locale;
+}
+
+export interface Locale {
+  country: string;
+  language: string;
+}
+
+export interface ProcessingOptions {
+  options: string[];
+}
+
+export interface RecommendedDocumentSpecification {
+  types: string[];
+}
+
+export interface ShipmentDryIceDetail {
+  totalWeight: Weight;
+  packageCount: number;
+}
+
+export interface ReturnShipmentDetail {
+  returnType: string;
+}
+
+export interface ShipmentCODDetail {
+  addTransportationChargesDetail: AddTransportationChargesDetail;
+  codRecipient: CodRecipient;
+  remitToName: string;
+  codCollectionType: string;
+  financialInstitutionContactAndAddress: TionContactAndAddress;
+  returnReferenceIndicatorType: string;
+}
+
+export interface AddTransportationChargesDetail {
+  rateType: string;
+  rateLevelType: string;
+  chargeLevelType: string;
+  chargeType: string;
+}
+
+export interface CodRecipient {
+  accountNumber: RecipientAccountNumber;
+}
+
+export interface SmartPostInfoDetail {
+  ancillaryEndorsement: string;
+  hubId: string;
+  indicia: string;
+  specialServices: string;
+}
+
+/*export type RateRequestBody = {
   accountNumber: {
     value: string;
   };
@@ -860,10 +1409,11 @@ type Shipper = {
 
 type Address = {
   city: string;
-  stateOrProvidence?: string | undefined;
+  stateOrProvinceCode?: string | undefined;
   postalCode: string;
   countryCode: CountryCode;
   residential?: boolean | undefined;
+  streetLines: string[] | undefined;
 };
 
 type RateRequestControlParameters = {
@@ -874,6 +1424,7 @@ type RateRequestControlParameters = {
 };
 
 type VariableOptions =
-  | "COMMITASCENDING"
-  | "SERVICENAMETRADITIONAL"
-  | "COMMITDESCENDING";
+  | "SATURDAY_DELIVERY"
+  | "FREIGHT_GUARANTEE"
+  | "SMART_POST_ALLOWED_INDICIA"
+  | "SMARTPOST_HUB_ID";*/
